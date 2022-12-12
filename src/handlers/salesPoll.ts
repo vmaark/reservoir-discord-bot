@@ -1,41 +1,24 @@
 import Redis from "ioredis";
-import {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ChannelType,
-  EmbedBuilder,
-  TextChannel,
-} from "discord.js";
 import { paths } from "@reservoir0x/reservoir-kit-client";
 import logger from "../utils/logger";
-import handleMediaConversion from "../utils/media";
 import getCollection from "./getCollection";
 import constants from "../utils/constants";
+import { TwitterApi } from "twitter-api-v2";
+
 const sdk = require("api")("@reservoirprotocol/v1.0#6e6s1kl9rh5zqg");
+const twitterClient = new TwitterApi(process.env.TWITTER_BEARER_TOKEN ?? "");
 
 /**
  * Check sales to see if there are new ones since the last alert
- * @param {TextChannel} channel channel to send new sales alerts
  * @param {string[]} contractArray collections to check for new sales
  * @param {string} apiKey Reservoir API Key
  * @param {Redis} redis Redis instance to save order ids
  */
 export async function salePoll(
-  channel: TextChannel,
   contractArray: string[],
   apiKey: string,
   redis: Redis
 ) {
-  if (!constants.ALERT_ENABLED.sales || contractArray?.length <= 0) {
-    return;
-  }
-  if (channel === undefined) {
-    logger.error("sales channel is undefined");
-    return;
-  } else if (channel.type !== ChannelType.GuildText) {
-    logger.error("sales channel is not a text channel");
-    return;
-  }
   try {
     // Authorizing with Reservoir API Key
     await sdk.auth(apiKey);
@@ -66,9 +49,6 @@ export async function salePoll(
     }
 
     if (!cachedId) {
-      channel.send(
-        "Restarting sales bot, new listings will begin to populate from here..."
-      );
       await redis.set("saleorderid", sales[0].saleId);
       return;
     }
@@ -119,50 +99,17 @@ export async function salePoll(
         );
         continue;
       }
-      const marketIcon = await handleMediaConversion(
-        `https://api.reservoir.tools/redirect/sources/${sales[i].orderSource}/logo/v2`,
-        `${sales[i].orderSource}`
+
+      const mediaId = await twitterClient.v1.uploadMedia("./image.png");
+
+      await twitterClient.v2.tweet(
+        `(2017 NFT) Realms of Ether ${sales[i].token?.name} purchased for ${
+          sales[i].price?.amount?.native
+        }Ξ ($${
+          sales[i].price?.amount?.usd
+        }) ${`https://api.reservoir.tools/redirect/sources/${sales[i].orderSource}/logo/v2`}`,
+        { media: { media_ids: [mediaId] } }
       );
-
-      const thumbnail = await handleMediaConversion(image, name);
-
-      const authorIcon = await handleMediaConversion(
-        collection[0].image,
-        collection[0].name
-      );
-
-      const salesEmbed = new EmbedBuilder()
-        .setColor(0x8b43e0)
-        .setTitle(`${sales[i].token?.name} has been sold!`)
-        .setAuthor({
-          name: `${sales[i].token?.collection?.name}`,
-          url: `https://forgotten.market/${sales[i].token?.contract}`,
-          iconURL: `attachment://${authorIcon.name}`,
-        })
-        .setDescription(
-          `Item: ${sales[i].token?.name}\nPrice: ${sales[i].price?.amount?.native}Ξ ($${sales[i].price?.amount?.usd})\nBuyer: ${sales[i].to}\nSeller: ${sales[i].from}`
-        )
-        .setThumbnail(`attachment://${thumbnail.name}`)
-        .setFooter({
-          text: `${sales[i].orderSource}`,
-          iconURL: marketIcon
-            ? `attachment://${marketIcon.name}`
-            : `https://api.reservoir.tools/redirect/sources/${sales[i].orderSource}/logo/v2`,
-        })
-        .setTimestamp();
-
-      // Generating floor token purchase button
-      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder()
-          .setLabel("View Sale")
-          .setStyle(5)
-          .setURL(`https://etherscan.io/tx/${sales[i].txHash}`)
-      );
-      channel.send({
-        embeds: [salesEmbed],
-        components: [row],
-        files: [marketIcon, thumbnail, authorIcon],
-      });
     }
     await redis.set("saleorderid", sales[0].saleId);
   } catch (e) {

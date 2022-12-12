@@ -1,6 +1,6 @@
 import dotenv from "dotenv";
 import logger from "./utils/logger";
-import Discord from "./discord";
+import Twitter from "./twitter";
 import waitPort from "wait-port";
 import constants from "./utils/constants";
 
@@ -10,19 +10,18 @@ import constants from "./utils/constants";
     dotenv.config();
 
     // Check env vars
-    const TOKEN: string | undefined = process.env.TOKEN;
+    const TWITTER_BEARER_TOKEN: string | undefined =
+      process.env.TWITTER_BEARER_TOKEN;
     const RESERVOIR_API_KEY: string | undefined = process.env.RESERVOIR_API_KEY;
     const TRACKED_CONTRACTS: string[] | undefined = constants.TRACKED_CONTRACTS;
-    const CHANNEL_IDS: object | undefined = constants.CHANNEL_IDS;
     const APPLICATION_ID: string | undefined = constants.APPLICATION_ID;
     const REDIS_PORT: number | undefined = constants.REDIS_PORT;
     const REDIS_HOST: string | undefined = constants.REDIS_HOST;
 
     if (
-      !TOKEN ||
+      !TWITTER_BEARER_TOKEN ||
       !RESERVOIR_API_KEY ||
       !TRACKED_CONTRACTS ||
-      !CHANNEL_IDS ||
       !APPLICATION_ID ||
       !REDIS_PORT ||
       !REDIS_HOST
@@ -33,8 +32,8 @@ import constants from "./utils/constants";
 
     const REDIS_URL = { port: REDIS_PORT, host: REDIS_HOST };
 
-    // Setup Discord
-    const discord = new Discord(TOKEN, RESERVOIR_API_KEY, REDIS_URL);
+    // Setup Twitter
+    const twitter = new Twitter(RESERVOIR_API_KEY, REDIS_URL);
 
     const params = {
       host: REDIS_HOST,
@@ -44,8 +43,7 @@ import constants from "./utils/constants";
     waitPort(params).then(async ({ open, ipVersion }) => {
       if (open) {
         console.log(`The port is now open on IPv${ipVersion}!`);
-        // Listen for Discord events
-        await discord.handleEvents();
+        await twitter.init();
       } else console.log("The port did not open before the timeout...");
     });
   } catch (e) {
